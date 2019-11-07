@@ -1,0 +1,287 @@
+Division:
+-- Select average revenue per employee by sector
+SELECT sector, 
+       avg(revenues/employees::numeric) AS avg_rev_employee
+  FROM fortune500
+ GROUP BY sector
+ -- Use the column alias to order the results
+ ORDER BY avg_rev_employee;
+ 
+ 
+ Explore with division:
+ -- Divide unanswered_count by question_count
+SELECT unanswered_count/question_count::numeric AS computed_pct, 
+       -- What are you comparing the above quantity to?
+       unanswered_pct
+  FROM stackoverflow
+ -- eliminate rows where question_count is not 0
+ WHERE question_count != 0
+ Limit 10;
+ 
+ 
+Summarize numeric columns:
+-- Select min, avg, max, and stddev of fortune500 profits
+SELECT min(profits),
+       avg(profits),
+       max(profits),
+       stddev(profits)
+  FROM fortune500;
+  
+  -- Select min, avg, max, and stddev of fortune500 profits
+SELECT min(profits),
+       avg(profits),
+       max(profits),
+       stddev(profits)
+  FROM fortune500
+  group by sector
+  order by avg;
+ 
+ 
+ Summarize group statistics:
+ -- Compute standard deviation of maximum values
+SELECT stddev(maxval),
+	   -- min
+       min(maxval),
+       -- max
+       max(maxval),
+       -- avg
+       avg(maxval)
+  -- Subquery to compute max of question_count by tag
+  FROM (SELECT max(question_count) AS maxval
+          FROM stackoverflow
+         -- Compute max by...
+         GROUP BY tag) AS max_results; -- alias for subquery
+         
+   
+Truncate:
+-- Truncate employees
+SELECT trunc(employees,- 5) AS employee_bin,
+       -- Count number of companies with each truncated value
+       count(*)
+  FROM fortune500
+ -- Use alias to group
+ GROUP BY employee_bin
+ -- Use alias to order
+ ORDER BY employee_bin;
+ 
+ -- Truncate employees
+SELECT trunc(employees, -4) AS employee_bin,
+       -- Count number of companies with each truncated value
+       count(*)
+  FROM fortune500
+ -- Limit to which companies?
+ WHERE employees < 100000
+ -- Use alias to group
+ GROUP BY employee_bin
+ -- Use alias to order
+ ORDER BY employee_bin;
+
+
+Generate series:
+-- Select the min and max of question_count
+SELECT min(question_count), 
+       max(question_count)
+  -- From what table?
+  FROM stackoverflow
+ -- For tag dropbox
+ where tag='dropbox';
+ 
+ -- Create lower and upper bounds of bins
+SELECT generate_series(2200, 3050, 50) AS lower,
+       generate_series(2250, 3100, 50) AS upper;
+       
+-- Bins created in previous step
+WITH bins AS (
+      SELECT generate_series(2200, 3050, 50) AS lower,
+             generate_series(2250, 3100, 50) AS upper),
+     -- subset stackoverflow to just tag dropbox
+     dropbox AS (
+      SELECT question_count 
+        FROM stackoverflow
+       WHERE tag='dropbox') 
+-- select columns for result
+SELECT lower, upper, count(question_count) 
+  -- from bins created above
+  FROM bins
+       -- join to dropbox and keep all rows from bins
+       left JOIN dropbox
+       -- Compare question_count to lower and upper
+         ON question_count >= lower 
+        AND question_count <  upper
+ -- Group by lower and upper to count values in each bin
+ GROUP BY lower, upper
+ -- Order by lower to put bins in order
+ ORDER BY lower;
+ 
+ 
+ Correlation:
+ -- Correlation between revenues and profit
+SELECT corr(revenues,profits) AS rev_profits,
+	   -- Correlation between revenues and assets
+       corr(revenues,assets) AS rev_assets,
+       -- Correlation between revenues and equity
+       corr(revenues,equity) AS rev_equity 
+  FROM fortune500;
+  
+  
+Mean and Median:
+-- What groups are you computing statistics by?
+SELECT sector,
+       -- Select the mean of assets with the avg function
+       avg(assets) AS mean,
+       -- Select the median
+       percentile_disc(0.5) within group (order by assets) AS median
+  FROM fortune500
+ -- Computing statistics for each what?
+ GROUP BY sector
+ -- Order results by a value of interest
+ ORDER BY mean;
+ 
+ 
+Create a temp table:
+ -- To clear table if it already exists;
+-- fill in name of temp table
+DROP TABLE IF EXISTS profit80;
+-- Create the temporary table
+create temp table profit80 AS 
+  -- Select the two columns you need; alias as needed
+  SELECT sector, 
+         percentile_disc(0.8) within group (order by profits) AS pct80
+    -- What table are you getting the data from?
+    from fortune500
+   -- What do you need to group by?
+   group by sector;   
+-- See what you created: select all columns and rows 
+-- from the table you created
+SELECT * 
+
+-- Code from previous step
+DROP TABLE IF EXISTS profit80;
+CREATE TEMP TABLE profit80 AS
+  SELECT sector, 
+         percentile_disc(0.8) WITHIN GROUP (ORDER BY profits) AS pct80
+    FROM fortune500 
+   GROUP BY sector;
+-- Select columns, aliasing as needed
+SELECT title, fortune500.sector, 
+       profits, profits/pct80 AS ratio
+-- What tables do you need to join?  
+  FROM fortune500 
+       LEFT JOIN profit80
+-- How are the tables joined?
+       ON fortune500.sector=profit80.sector
+-- What rows do you want to select?
+ WHERE profits > pct80;
+ 
+ 
+Create a temp table to simplify a query:
+-- To clear table if it already exists
+DROP TABLE IF EXISTS startdates;
+
+-- Create temp table syntax
+CREATE temp table startdates AS
+-- Compute the minimum date for each what?
+SELECT tag,
+       min(date) AS mindate
+  FROM stackoverflow
+ -- What do you need to add to get a date for each tag?
+ group by tag;
+ 
+ -- Look at the table you created
+ SELECT * 
+   FROM startdates;
+   
+  -- To clear table if it already exists
+DROP TABLE IF EXISTS startdates;
+
+CREATE TEMP TABLE startdates AS
+SELECT tag, min(date) AS mindate
+  FROM stackoverflow
+ GROUP BY tag;
+ 
+-- Select tag and mindate
+SELECT startdates.tag, 
+       mindate, 
+       -- Select question count on the first and last days
+	   a.question_count AS min_date_question_count,
+       b.question_count AS max_date_question_count,
+       -- Compute the difference of above 
+       b.question_count - a.question_count AS change
+  -- Join startdates and one copy of stackoverflow
+  FROM startdates
+       INNER JOIN stackoverflow AS a
+          ON startdates.tag=a.tag
+         -- Condition for matching mindate
+         AND startdates.mindate=a.date
+       -- Join other copy of stackoverflow
+       INNER JOIN stackoverflow AS b
+          ON startdates.tag=b.tag
+         -- Condition for matching last date
+         AND b.date='2018-09-25';
+         
+         
+Insert into a temp table:
+DROP TABLE IF EXISTS correlations;
+-- Create temp table 
+create temp table correlations AS
+-- Select each correlation
+SELECT 'profits'::varchar AS measure,
+       -- Compute correlations
+       corr(profits, profits) AS profits,
+       corr(profits, profits_change) AS profits_change,
+       corr(profits, revenues_change) AS revenues_change
+  FROM fortune500;
+  
+ DROP TABLE IF EXISTS correlations;
+CREATE TEMP TABLE correlations AS
+SELECT 'profits'::varchar AS measure,
+       corr(profits, profits) AS profits,
+       corr(profits, profits_change) AS profits_change,
+       corr(profits, revenues_change) AS revenues_change
+  FROM fortune500;
+-- Add a row for profits_change
+-- Insert into what table?
+INSERT INTO correlationS
+-- Follow the pattern of the select statement above
+-- Using profits_change instead of profits
+SELECT 'profits_change'::varchar AS measure,
+       corr(profits_change, profits) AS profits,
+       corr(profits_change, profits_change) AS profits_change,
+       corr(profits_change, revenues_change) AS revenues_change
+  FROM fortune500;
+INSERT INTO correlations
+-- Repeat the above, but for revenues_change
+SELECT 'revenues_change'::varchar AS measure,
+       corr(revenues_change, profits) AS profits,
+       corr(revenues_change, profits_change) AS profits_change,
+       corr(revenues_change, revenues_change) AS revenues_change
+  FROM fortune500;
+  
+  DROP TABLE IF EXISTS correlations;
+CREATE TEMP TABLE correlations AS
+SELECT 'profits'::varchar AS measure,
+       corr(profits, profits) AS profits,
+       corr(profits, profits_change) AS profits_change,
+       corr(profits, revenues_change) AS revenues_change
+  FROM fortune500;
+INSERT INTO correlations
+SELECT 'profits_change'::varchar AS measure,
+       corr(profits_change, profits) AS profits,
+       corr(profits_change, profits_change) AS profits_change,
+       corr(profits_change, revenues_change) AS revenues_change
+  FROM fortune500;
+INSERT INTO correlations
+SELECT 'revenues_change'::varchar AS measure,
+       corr(revenues_change, profits) AS profits,
+       corr(revenues_change, profits_change) AS profits_change,
+       corr(revenues_change, revenues_change) AS revenues_change
+  FROM fortune500;
+-- Select each column, rounding the correlations
+SELECT measure, 
+      round(profits::numeric,2) AS profits,
+       round(profits_change::numeric,2) AS profits_change,
+       round(revenues_change::numeric,2) AS revenues_change
+  FROM correlations;
+  
+  
+  
